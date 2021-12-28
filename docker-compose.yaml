@@ -1,0 +1,130 @@
+version: '3.7'
+services:
+  mongodb-primary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mongodb-primary
+    hostname: mongodb-primary
+    ports:
+      - 27017:27017
+    environment:
+      TZ: Asia/Tokyo
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: toor
+    volumes:
+      - ./data/primary/db:/data/db
+    networks:
+      - mongo-test
+    command: --keyFile /etc/keyfile --replSet replset
+    healthcheck:
+      test: ['CMD', 'mongo', '-u', 'root', '-p', 'toor']
+      interval: 20s
+      timeout: 10s
+      start_period: 5s
+      retries: 5
+
+  mongodb-secondary1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mongodb-secondary1
+    hostname: mongodb-secondary1
+    ports:
+      - 27018:27018
+    environment:
+      TZ: Asia/Tokyo
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: toor
+    volumes:
+      - ./data/secondary1/db:/data/db
+    command: --port 27018 --replSet replset --keyFile /etc/keyfile
+    networks:
+      - mongo-test
+    healthcheck:
+      test: ['CMD', 'mongo', '-u', 'root', '-p', 'toor', '--port', '27018']
+      interval: 20s
+      timeout: 10s
+      start_period: 5s
+      retries: 5
+
+  mongodb-secondary2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mongodb-secondary2
+    hostname: mongodb-secondary2
+    ports:
+      - 27019:27019
+    environment:
+      TZ: Asia/Tokyo
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: toor
+    volumes:
+      - ./data/secondary2/db:/data/db
+    command: --port 27019 --keyFile /etc/keyfile  --replSet replset
+    networks:
+      - mongo-test
+    healthcheck:
+      test: ['CMD', 'mongo', '-u', 'root', '-p', 'toor', '--port', '27019']
+      interval: 20s
+      timeout: 10s
+      start_period: 5s
+      retries: 5
+
+  mongodb-arbiter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mongodb-arbiter
+    hostname: mongodb-arbiter
+    ports:
+      - 27020:27020
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: toor
+    command: --port 27020 --replSet replset --keyFile /etc/keyfile
+    networks:
+      - mongo-test
+    healthcheck:
+      test: ['CMD', 'mongo', '-u', 'root', '-p', 'toor', '--port', '27020']
+      interval: 20s
+      timeout: 10s
+      start_period: 5s
+      retries: 5
+
+  mongo-connector:
+    build: ./mongo-connector
+    container_name: mongo-connector
+    depends_on:
+      mongodb-primary:
+        condition: service_healthy
+      mongodb-secondary1:
+        condition: service_healthy
+      mongodb-secondary2:
+        condition: service_healthy
+      mongodb-arbiter:
+        condition: service_healthy
+    networks:
+      - mongo-test
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    ports:
+      - '8081:8081'
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: toor
+      ME_CONFIG_MONGODB_SERVER: mongodb-primary
+      ME_CONFIG_BASICAUTH_USERNAME: root
+      ME_CONFIG_BASICAUTH_PASSWORD: toor
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: true
+    depends_on:
+      - mongo-connector
+    restart: always
+    networks:
+      - mongo-test
+
+networks:
+  mongo-test:
